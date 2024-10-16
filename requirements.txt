@@ -9,8 +9,11 @@ pinecone
 pydantic
 langchain-community
 langchain-pinecone
+langchainhub
 langchain-openai
 mysql-connector-python
 beautifulsoup4
 openpyxl
 Levenshtein
+duckduckgo-search
+langchain-experimental

@@ -4,13 +4,12 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-from tools.document_loader import load_document
 from backend.vectorstore import create_vector_store
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 import tiktoken
 import time
 
-
+from langchain.embeddings import OpenAIEmbeddings
+import pandas as pd
 import mysql.connector
 from bs4 import BeautifulSoup
 import re
@@ -18,6 +17,7 @@ from openpyxl import Workbook
 from Levenshtein import distance as levenshtein_distance
 import hashlib
 
+embeddings = OpenAIEmbeddings()
 
 def hash_text(text):
     return hashlib.md5(text.encode()).hexdigest()
@@ -56,8 +56,8 @@ def get_wordpress_content(host, user, password, database):
     )
     cursor = conn.cursor()
 
-    # query = "SELECT DISTINCT post_content FROM wp_posts WHERE post_status = 'publish'"
-    query = "SELECT DISTINCT post_content FROM wp_posts"
+    query = "SELECT DISTINCT post_content FROM wp_posts WHERE post_status = 'publish'"
+    # query = "SELECT DISTINCT post_content FROM wp_posts"
     cursor.execute(query)
 
     posts = cursor.fetchall()
@@ -94,7 +94,7 @@ def chunk_content(content, min_chunk_size=100, max_chunk_size=1000):
     return chunks
 
 
-def process_wordpress_content(host, user, password, database, min_chunk_size=100, max_chunk_size=1000, output_file='chunks.xlsx'):
+def process_wordpress_content(host, user, password, database, min_chunk_size=50, max_chunk_size=1500, output_file='chunks.xlsx'):
     start_time = time.time()
     posts = get_wordpress_content(host, user, password, database)
     all_chunks = []
