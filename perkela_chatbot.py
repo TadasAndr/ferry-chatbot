@@ -1,5 +1,6 @@
 import sys
 import os
+import time
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -48,27 +49,29 @@ if prompt := st.chat_input("Type your message here..."):
         message_placeholder = st.empty()
         full_response = {"content": ""}
 
-        class CustomStreamHandler(StreamHandler):
-            def __init__(self, container):
-                super().__init__(container)
-                self.container = container
-                self.thought_buffer = ""
-                self.display_content = ""
+        with st.spinner("DI galvoja..."):
+            class CustomStreamHandler(StreamHandler):
+                def __init__(self, container):
+                    super().__init__(container)
+                    self.container = container
+                    self.thought_buffer = ""
+                    self.display_content = ""
 
-            def on_llm_new_token(self, token: str, **kwargs) -> None:
-                self.thought_buffer += token
-                if "Final Answer:" in self.thought_buffer:
-                    final_answer = self.thought_buffer.split("Final Answer:")[-1].strip()
-                    self.display_content = final_answer
-                    self.container.markdown(self.display_content)
-                elif "Human:" in self.thought_buffer:
-                    self.thought_buffer = ""  # Reset buffer for next response
+                def on_llm_new_token(self, token: str, **kwargs) -> None:
+                    self.thought_buffer += token
+                    if "Final Answer:" in self.thought_buffer:
+                        final_answer = self.thought_buffer.split("Final Answer:")[-1].strip()
+                        self.display_content = final_answer
+                        self.container.markdown(self.display_content)
+                    elif "Human:" in self.thought_buffer:
+                        self.thought_buffer = ""
 
-        stream_handler = CustomStreamHandler(message_placeholder)
+            stream_handler = CustomStreamHandler(message_placeholder)
 
-        output = st.session_state['chatbot'].ask(prompt, stream_handler)
+            time.sleep(2)
 
-        # If no final answer was streamed, display the full output
+            output = st.session_state['chatbot'].ask(prompt, stream_handler)
+
         if not stream_handler.display_content:
             message_placeholder.markdown(output)
         
