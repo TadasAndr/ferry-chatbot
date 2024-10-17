@@ -24,11 +24,11 @@ class LLM:
         self.load_excel_data(file_path)
         self.vector_store = vector_store
         self.llm = ChatOpenAI(
-        temperature=0.3,
-        model_name="gpt-4o",
-        streaming=True
+            temperature=0,
+            model_name="gpt-4o",
+            streaming=True
         )
-        self.memory = ConversationBufferMemory(return_messages=True)
+        self.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
         self.setup_tools()
         self.setup_agent()
 
@@ -67,7 +67,7 @@ class LLM:
         python_repl_tool = Tool(
             name='Python_REPL',
             func=python_repl.run,
-            description='Use this tool when you need to analyse transport flows with pandas using the df data frame. The "laikas" column is in date/time format, the "praleidimas" is an integer indicating how many cars passed that hour.'
+            description='Use this tool when you need to analyse transport flows with pandas using the df data frame. The "laikas" column is already parsed to datetime format, the "praleidimas" is an integer indicating how many cars passed that hour. Make sure your answer is structured.'
         )
 
         # DuckDuckGo Search Tool
@@ -75,13 +75,13 @@ class LLM:
         duckduckgo_tool = Tool(
             name='DuckDuckGo_Search',
             func=search.run,
-            description='Use this tool if you need additional information about "Smiltynės perkėla" from the Internet..'
+            description='Use this tool if you need additional information about "Smiltynės perkėla" from the Internet. Prompt this knowledge base in Lithunian. Make sure your answer is structured.'
         )
 
         retriever_tool = Tool(
             name='Knowledge_Base',
             func=lambda query: '\n'.join([doc.page_content for doc in self.vector_store.similarity_search(query, k=3)]),
-            description='Priority to this tool. Use it to retrieve information from the Smiltynė ferry knowledge base.'
+            description='Prompt this knowledge base in lithuanian. Use it to retrieve information from the Smiltynė ferry knowledge base. Make sure your answer is structured.'
         )
 
         self.tools = [python_repl_tool, duckduckgo_tool, retriever_tool]
@@ -90,51 +90,71 @@ class LLM:
         self.agent_executor = initialize_agent(
             tools=self.tools,
             llm=self.llm,
-            agent=AgentType.CHAT_ZERO_SHOT_REACT_DESCRIPTION,
+            agent=AgentType.CHAT_CONVERSATIONAL_REACT_DESCRIPTION,
             verbose=True,
-            max_iterations=5,
+            max_iterations=3,
+            early_stopping_method="generate",
+            memory=self.memory,
             handle_parsing_errors=True,
             agent_kwargs={
-                "prefix": '''You are an expert on "Smiltynės perkėla" ferry services.
+                "prefix": '''You are an expert on "Smiltynės perkėla" ferry services. Current date 2024-10-17.
 
-            Instructions:
-            1. Always provide informative and helpful responses.
-            2. If the question is not related to "Smiltynės perkėla" or ferry services politely redirect to the topic.
-            3. Use tools to gather information before answering if necessary.
-            4. On iteration 3 ALWAYS have an answer!!!
-            5. ALWAYS format your response exactly as shown below, including the Action and Action Input fields.
-            
-            Format your response as follows:
+                Instructions:
+                1. Always provide informative and helpful responses.
+                2. If the question is not related to "Smiltynės perkėla" or ferry services politely redirect to the topic.
+                3. Use tools to gather information before answering if necessary.
+                4. When using the Python_REPL tool, ALWAYS provide the exact Python code as the Action Input.
+                5. On the last iteration, ALWAYS provide a final answer without using tools.
+                6. Format your response EXACTLY as shown below.
 
-                Thought: [your thought]
+                Human: {input}
+                AI: Certainly! I'll do my best to answer your question about Smiltynės perkėla ferry services.
+
+                Thought: [your thought process]
                 Action: [tool name]
-                Action Input: [input for the tool]
-                Observation: [result]
-                ... (repeat as needed, max 3 times)
-                Thought: I now know the final answer
-                Final Answer: [your final answer in Lithuanian]
+                Action Input: [For Python_REPL, provide ONLY the Python code. For other tools, provide the input query.]
+                Observation: [result from tool]
 
-            Available tools:''',
-                "suffix": '''Begin!
+                (Repeat Thought/Action/Action Input/Observation as needed, max 2 times)
 
-            Human: {input}
-            {agent_scratchpad}'''
+                Thought: I now have enough information to provide a final answer.
+                Action: Final Answer
+                Action Input: [your final answer in English]
+
+                Human: Thank you for the information. Do you have any more questions about Smiltynės perkėla or ferry services?
+
+                Available tools:''',
+                "suffix": "Begin!"
             }
         )
         
     def ask(self, question, stream_handler=None):
-        # if not self.is_relevant_question(question):
-        #     irrelevant_response = 'Atsiprašau, bet šis klausimas nėra susijęs su „Smiltynės perkėla" ar keltų paslaugomis. Ar galėčiau jums padėti su klausimu apie keltų paslaugas?'
-        #     if stream_handler:
-        #         stream_handler.on_llm_new_token(irrelevant_response)
-        #     return irrelevant_response
-
         callbacks = [stream_handler] if stream_handler else None
-        english_response = self.agent_executor.run(question, callbacks=callbacks)
-        lithuanian_response = self.translate_to_lithuanian(english_response)
         
-        # Send the translated response through the stream handler
-        if stream_handler:
-            stream_handler.on_llm_new_token("\nFinal Answer: " + lithuanian_response)
-        
-        return lithuanian_response
+        try:
+            response = self.agent_executor.run(
+                input=question,
+                chat_history=self.memory.chat_memory.messages,
+                callbacks=callbacks
+            )
+            
+            if "Action: Final Answer" in response:
+                final_answer = response.split("Action: Final Answer")[-1].strip()
+                final_answer = final_answer.split("Action Input:")[-1].strip()
+            else:
+                final_answer = response.strip()
+            
+            lithuanian_response = self.translate_to_lithuanian(final_answer)
+            
+            self.memory.chat_memory.add_user_message(question)
+            self.memory.chat_memory.add_ai_message(lithuanian_response)
+            
+            if stream_handler:
+                stream_handler.on_llm_new_token("\nFinal Answer: " + lithuanian_response)
+            
+            return lithuanian_response
+        except Exception as e:
+            error_message = f"An error occurred: {str(e)}. Please try rephrasing your question."
+            if stream_handler:
+                stream_handler.on_llm_new_token("\nError: " + error_message)
+            return error_message
