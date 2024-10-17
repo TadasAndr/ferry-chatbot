@@ -7,6 +7,9 @@ from langchain.callbacks.base import BaseCallbackHandler
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationChain
 import pandas as pd
+from functools import lru_cache
+from duckduckgo_search.exceptions import RatelimitException
+import time
 
 
 class StreamHandler(BaseCallbackHandler):
@@ -70,8 +73,17 @@ class LLM:
             description='Use this tool when you need to analyse transport flows with pandas using the df data frame. The "laikas" column is already parsed to datetime format, the "praleidimas" is an integer indicating how many cars passed that hour. Make sure your answer is structured.'
         )
 
-        # DuckDuckGo Search Tool
-        search = DuckDuckGoSearchRun()
+        @lru_cache(maxsize=100)
+        def cached_search(query):
+            search = DuckDuckGoSearchRun()
+            time.sleep(1)
+            return search.run(query)
+
+        duckduckgo_tool = Tool(
+            name='DuckDuckGo_Search',
+            func=lambda query: cached_search(f"Smiltynės perkėla keltas.lt {query}"),
+            description='Use this tool if you need additional information about "Smiltynės perkėla" from the Internet. Prompt this knowledge base in Lithuanian. Make sure your answer is structured.')
+
 
         duckduckgo_tool = Tool(
             name='DuckDuckGo_Search',
@@ -157,6 +169,11 @@ class LLM:
                 stream_handler.on_llm_new_token("\nFinal Answer: " + lithuanian_response)
             
             return lithuanian_response
+        except RatelimitException:
+            error_message = "We've hit a rate limit with our search tool. Please try again in a few minutes or rephrase your question to use our internal knowledge base."
+            if stream_handler:
+                stream_handler.on_llm_new_token("\nError: " + error_message)
+            return error_message
         except Exception as e:
             error_message = f"An error occurred: {str(e)}. Please try rephrasing your question."
             if stream_handler:
