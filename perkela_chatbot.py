@@ -32,7 +32,6 @@ if 'chat_history' not in st.session_state:
     st.session_state['chat_history'] = []
 
     
-# Display chat history
 for i in range(len(st.session_state['past'])):
     with st.chat_message("user", avatar="🧑"):
         st.markdown(st.session_state['past'][i])

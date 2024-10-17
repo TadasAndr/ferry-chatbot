@@ -72,10 +72,11 @@ class LLM:
 
         # DuckDuckGo Search Tool
         search = DuckDuckGoSearchRun()
+
         duckduckgo_tool = Tool(
             name='DuckDuckGo_Search',
-            func=search.run,
-            description='Use this tool if you need additional information about "Smiltynės perkėla" from the Internet. Prompt this knowledge base in Lithunian. Make sure your answer is structured.'
+            func=lambda query: search.run(f"Smiltynės perkėla keltas.lt {query}"),
+            description='Use this tool if you need additional information about "Smiltynės perkėla" from the Internet. Prompt this knowledge base in Lithuanian. Make sure your answer is structured.'
         )
 
         retriever_tool = Tool(
@@ -84,7 +85,7 @@ class LLM:
             description='Prompt this knowledge base in lithuanian. Use it to retrieve information from the Smiltynė ferry knowledge base. Make sure your answer is structured.'
         )
 
-        self.tools = [python_repl_tool, duckduckgo_tool, retriever_tool]
+        self.tools = [retriever_tool, python_repl_tool, duckduckgo_tool]
     
     def setup_agent(self):
         self.agent_executor = initialize_agent(
@@ -92,17 +93,20 @@ class LLM:
             llm=self.llm,
             agent=AgentType.CHAT_CONVERSATIONAL_REACT_DESCRIPTION,
             verbose=True,
-            max_iterations=3,
+            max_iterations=7,
+            max_execution_time=30,
             early_stopping_method="generate",
             memory=self.memory,
             handle_parsing_errors=True,
             agent_kwargs={
-                "prefix": '''You are an expert on "Smiltynės perkėla" ferry services. Current date 2024-10-17.
+                "prefix": '''You are an expert on "Smiltynės perkėla" ferry services you MUST answer related only to that. 
+                You have tools from their webpage (Knowledge_Base), the internet (DuckDuckGo_Search) and dataframe with traffic data (Python_REPL).
+                Current date 2024-10-17.
 
                 Instructions:
                 1. Always provide informative and helpful responses.
                 2. If the question is not related to "Smiltynės perkėla" or ferry services politely redirect to the topic.
-                3. Use tools to gather information before answering if necessary.
+                3. ALWAYS use the Knowledge_Base tool first. Only if it doesn't provide sufficient information, consider using other tools.
                 4. When using the Python_REPL tool, ALWAYS provide the exact Python code as the Action Input.
                 5. On the last iteration, ALWAYS provide a final answer without using tools.
                 6. Format your response EXACTLY as shown below.
@@ -115,7 +119,7 @@ class LLM:
                 Action Input: [For Python_REPL, provide ONLY the Python code. For other tools, provide the input query.]
                 Observation: [result from tool]
 
-                (Repeat Thought/Action/Action Input/Observation as needed, max 2 times)
+                (Repeat Thought/Action/Action Input/Observation as needed, max 3 times)
 
                 Thought: I now have enough information to provide a final answer.
                 Action: Final Answer
