@@ -82,12 +82,6 @@ class LLM:
         duckduckgo_tool = Tool(
             name='DuckDuckGo_Search',
             func=lambda query: cached_search(f"Smiltynės perkėla keltas.lt {query}"),
-            description='Use this tool if you need additional information about "Smiltynės perkėla" from the Internet. Prompt this knowledge base in Lithuanian. Make sure your answer is structured.')
-
-
-        duckduckgo_tool = Tool(
-            name='DuckDuckGo_Search',
-            func=lambda query: search.run(f"Smiltynės perkėla keltas.lt {query}"),
             description='Use this tool if you need additional information about "Smiltynės perkėla" from the Internet. Prompt this knowledge base in Lithuanian. Make sure your answer is structured.'
         )
 
@@ -97,8 +91,8 @@ class LLM:
             description='Prompt this knowledge base in lithuanian. Use it to retrieve information from the Smiltynė ferry knowledge base. Make sure your answer is structured.'
         )
 
-        self.tools = [retriever_tool, python_repl_tool, duckduckgo_tool]
-    
+        self.tools = [python_repl_tool, retriever_tool, duckduckgo_tool]
+        
     def setup_agent(self):
         self.agent_executor = initialize_agent(
             tools=self.tools,
